@@ -1,0 +1,53 @@
+1. 압축해제
+
+2. www.virtualbox.org 다운로드
+  1) 6.1.34 windows
+  2) oracle vm extension pack
+
+3. server01.vbox  server02.vbox 더블클릭
+
+4. 환경설정 -> 확장 -> extension pack 추가
+
+5. xshell 실행
+  # 네트워크 충돌 일어났을 때
+  vmware -> edit -> network 설정 -> 192.168.80.0 으로 수정
+  # xshell 연결이 안됐을때!
+  ** ncpa.cpl 네트워크 설정 실행
+  host only network -> 속성 -> 인터넷 프로토콜 버전 4(TCP/IPv4) 속성 ->
+  ip : 192.168.56.1
+  서브넷 마스트 : 255.255.255.0
+
+
+
+########################################
+[bigdata@server01 ~]$ su root
+Password: adminuser
+# 비밀번호 변경 하는 방법
+[root@server01 bigdata]# passwd
+Changing password for user root.
+New password: 
+BAD PASSWORD: it is too short
+BAD PASSWORD: is too simple
+Retype new password: 
+passwd: all authentication tokens updated successfully.
+# 그룹 만들기
+gpasswd -a bigdata wheel
+
+[root@server01 bigdata]# visudo
+## Allows people in group wheel to run all commands
+%wheel  ALL=(ALL)       ALL   <-주석제거  
+[root@server01 bigdata]# reboot
+[bigdata@server01 ~]$ sudo -i
+
+We trust you have received the usual lecture from the local System
+Administrator. It usually boils down to these three things:
+
+    #1) Respect the privacy of others.
+    #2) Think before you type.
+    #3) With great power comes great responsibility.
+
+[sudo] password for bigdata: 
+[root@server01 ~]# 
+이상태에서 크롬 웹주소창에 server01.hadoop.com -> 클러스터 생성
+
+이후는 pdf를 따라...
