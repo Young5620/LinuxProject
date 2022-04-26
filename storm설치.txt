@@ -1,0 +1,142 @@
+## Storm 설치
+
+ 1. 다운로드 (/home/pilot-pjt)
+ 
+ cd /home/pilot-pjt
+
+ wget http://archive.apache.org/dist/storm/apache-storm-1.2.3/apache-storm-1.2.3.tar.gz
+
+ tar -xvf apache-storm-1.2.3.tar.gz
+ 
+ ln -s apache-storm-1.2.3 storm    # apache-storm-1.2.3디렉터리를 storm으로 접근
+
+ 2. 환경설정 
+ vim /home/pilot-pjt/storm/conf/storm.yaml
+==아래의 내용을 추가==
+storm.zookeeper.servers:
+ - "server02.hadoop.com"
+
+storm.local.dir: "/home/pilot-pjt/storm/data"
+
+nimbus.seeds: ["server02.hadoop.com"]
+
+supervisor.slots.ports:
+ - 6700
+
+ui.port: 8088
+ 
+
+ 3. 로그 수정 (안해도 되지만, 성능상문제로 수정... info -> error로 변경
+
+ vim /home/pilot-pjt/storm/log4j2/cluster.xml
+ vim /home/pilot-pjt/storm/log4j2/worker.xml
+ 두 파일의 75번째 줄부터 91줄까지 로그 level을 모두 error로 수정
+
+[cluster.xml]
+ 75     <Logger name="org.apache.storm.logging.filters.AccessLoggingFilter" level="error" additivity="false"    >
+ 76         <AppenderRef ref="WEB-ACCESS"/>
+ 77         <AppenderRef ref="syslog"/>
+ 78     </Logger>
+ 79     <Logger name="org.apache.storm.logging.ThriftAccessLogger" level="error" additivity="false">
+ 80         <AppenderRef ref="THRIFT-ACCESS"/>
+ 81         <AppenderRef ref="syslog"/>
+ 82     </Logger>
+ 83     <Logger name="org.apache.storm.metric.LoggingClusterMetricsConsumer" level="error" additivity="false    ">
+ 84         <appender-ref ref="METRICS"/>
+ 85     </Logger>
+ 86     <root level="error"> <!-- We log everything -->
+ 87         <appender-ref ref="A1"/>
+ 88         <appender-ref ref="syslog"/>
+ 89     </root>
+ 90 </loggers>
+
+[worker.xml]
+ 75 <loggers>
+ 76     <root level="error"> <!-- We log everything -->
+ 77         <appender-ref ref="A1"/>
+ 78         <appender-ref ref="syslog"/>
+ 79     </root>
+ 80     <Logger name="org.apache.storm.metric.LoggingMetricsConsumer" level="error" additivity="false">
+ 81         <appender-ref ref="METRICS"/>
+ 82     </Logger>
+ 83     <Logger name="STDERR" level="error">
+ 84         <appender-ref ref="STDERR"/>
+ 85         <appender-ref ref="syslog"/>
+ 86     </Logger>
+ 87     <Logger name="STDOUT" level="error">
+ 88         <appender-ref ref="STDOUT"/>
+ 89         <appender-ref ref="syslog"/>
+ 90     </Logger>
+ 91 </loggers>
+
+
+ 4. 실행 파일 경로 설정(PATH설정)
+ 
+ vim /root/.bash_profile
+
+ 10 PATH=$PATH:$HOME/bin:/usr/local/bin
+ 11 PATH=$PATH:/home/pilot-pjt/storm/bin
+ 12         
+ 13 export PATH
+
+ source /root/.bash_profile    (설정 적용)
+
+ 5. JAVA버전 확인 .... 
+ java -version (1.8.0버전이면 되용, 아니면... 수정)
+
+
+ 6. 전달한 storm-nimbus, storm-supervisor, storm-ui 를 
+   /etc/init.d/ 혹은 /etc/rc.d/init.d/ 에 업로드 혹은 복사(파일질라)
+
+  혹... 직접 만들고 싶다.... https://gist.github.com/yulrizka 에서 제공하는 설정
+ 을 수정해서 사용함. 
+
+  업로드 후 파일 권한 수정 
+  chmod 755 /etc/init.d/storm-*  (3개 파일이 동시 적용)
+  
+ 7. 서비스 등록 스크립트에 대한 log및 pid(실행) 디렉터리 생성
+
+ mkdir /var/{log,run}/storm
+
+ or
+ mkdir /var/log/storm
+ mkdir /var/run/storm
+
+ 8. 서비스 시작.. 
+ service storm-nimbus start
+ service storm-supervisor start
+ service storm-ui start
+
+ ** 안될때는 로그 확인.... /var/log/storm에 있는.... 
+
+ 9. 자동실행 등록
+ chkconfig storm-nimbus on
+ chkconfig storm-supervisor on
+ chkconfig storm-ui on
+
+ 10. 웹 접속 확인 (ui.port: 8088)
+ server02.hadoop.com:8088
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
