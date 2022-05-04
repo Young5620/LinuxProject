@@ -1,0 +1,172 @@
+  - Canopy 군집분석에서 나온 클러스터 수(148)를 참고해서 다음에 진행할 K-Means 군집의 K값을 148"보다 좀 더 큰 값인 "200"으로 확정한다. 
+    K-Means 분석은 제플린에서 스파크ML을 이용한다. 먼저 제플린이 종료됐다면 다음 명령어를 통해 제플린 서버를 실행하고, 
+    크롬 브라우저를 통해 제플린 웹IDE에 접속
+    $ zeppelin-daemon.sh restart
+    http://server02.hadoop.com:8081/
+
+  - Notebook 새로 생성 (SmartCar-Clustering)
+
+  - 라이브러리 입력
+    import org.apache.spark.ml.feature.MinMaxScaler
+    import org.apache.spark.ml.feature.StringIndexer
+    import org.apache.spark.ml.clustering.KMeansModel
+    import org.apache.spark.ml.feature.VectorAssembler
+    import org.apache.spark.ml.clustering.KMeans
+    import org.apache.spark.ml.evaluation.ClusteringEvaluator
+
+  - 하이브에서 생성해 둔 스마트카 마스터 데이터셋 로드하고 결과확인
+    val ds = spark.read.option("delimiter", " ").csv("/pilot-pjt/mahout/clustering/input/smartcar_master.txt")
+    ds.show(5)
+
+  - 스마트카 마스터 데이터셋의 컬럼명, 타입 등을 재구성
+    val dsSmartCar_Master_1 = ds.selectExpr(
+                        "cast(_c0 as string) car_number",
+                        "cast(_c1 as string) car_capacity",
+                        "cast(_c2 as string) car_year",
+                        "cast(_c3 as string) car_model",
+                        "cast(_c4 as string) sex",
+                        "cast(_c5 as string) age",
+                        "cast(_c6 as string) marriage",
+                        "cast(_c7 as string) job",
+                        "cast(_c8 as string) region"
+                       )
+
+  - 문자형 카테고리 컬럼을 숫자형 컬럼으로 생성해 새로운 컬럼으로 추가
+    val dsSmartCar_Master_2 = new StringIndexer().setInputCol("car_capacity").setOutputCol("car_capacity_n")
+                                             .fit(dsSmartCar_Master_1).transform(dsSmartCar_Master_1)
+    val dsSmartCar_Master_3 = new StringIndexer().setInputCol("car_year").setOutputCol("car_year_n")
+                                             .fit(dsSmartCar_Master_2).transform(dsSmartCar_Master_2)
+    val dsSmartCar_Master_4 = new StringIndexer().setInputCol("car_model").setOutputCol("car_model_n")
+                                             .fit(dsSmartCar_Master_3).transform(dsSmartCar_Master_3)
+    val dsSmartCar_Master_5 = new StringIndexer().setInputCol("sex").setOutputCol("sex_n")
+                                             .fit(dsSmartCar_Master_4).transform(dsSmartCar_Master_4)
+    val dsSmartCar_Master_6 = new StringIndexer().setInputCol("age").setOutputCol("age_n")
+                                             .fit(dsSmartCar_Master_5).transform(dsSmartCar_Master_5)
+    val dsSmartCar_Master_7 = new StringIndexer().setInputCol("marriage").setOutputCol("marriage_n")
+                                             .fit(dsSmartCar_Master_6).transform(dsSmartCar_Master_6)
+    val dsSmartCar_Master_8 = new StringIndexer().setInputCol("job").setOutputCol("job_n")
+                                             .fit(dsSmartCar_Master_7).transform(dsSmartCar_Master_7)
+    val dsSmartCar_Master_9 = new StringIndexer().setInputCol("region").setOutputCol("region_n")
+                                             .fit(dsSmartCar_Master_8).transform(dsSmartCar_Master_8)
+
+  - 스마트카 마스터 데이터에서 유효한 변수(차량용량, 차량연식, 차량모델, 운전자성별, 운전자결혼여부)만 선정해 클러스터링의 
+    Features 변수로 사용한다.
+    val cols = Array("car_capacity_n", "car_year_n", "car_model_n", "sex_n", "marriage_n")
+
+    val dsSmartCar_Master_10 = new VectorAssembler().setInputCols(cols).setOutputCol("features")
+                                                .transform(dsSmartCar_Master_9)
+    val dsSmartCar_Master_11 = new MinMaxScaler().setInputCol("features").setOutputCol("scaledFeatures")
+                                             .fit(dsSmartCar_Master_10).transform(dsSmartCar_Master_10)
+
+  - 기존 필드를 삭제하고 재구성된 스마트카 마스터 데이터셋을 확인해 본다. 이제 스파크ML을 이용해 K-Means 군집 분석을 하기 위한 
+    데이터 전처리 작업이 끝났다.
+    <스마트카 마스터 데이터셋 확인 및 학습/검증 데이터 생성
+    val dsSmartCar_Master_12 = dsSmartCar_Master_11.drop("car_capacity").drop("car_year").drop("car_model").drop("sex")
+                                               .drop("age").drop("marriage").drop("job").drop("region").drop("features")
+                                               .withColumnRenamed("scaledfeatures", "features")
+    dsSmartCar_Master_12.show(5)                                               
+
+    val Array(trainingData, testData) = dsSmartCar_Master_12.randomSplit(Array(0.7, 0.3))
+
+  - K-Means 군집 분석을 실행한다. 군집(클러스터)의 개수는 앞선 머하웃의 Canopy 분석에서 얻은 결과에 따라 200을 설정한다.
+    val kmeans = new KMeans()
+      .setSeed(1L) 
+      .setK(200)
+      .setFeaturesCol("features")
+      .setPredictionCol("prediction")
+    val kmeansModel = kmeans.fit(dsSmartCar_Master_12)
+
+  - K-Means 군집의 결과를 다음 코드를 실행해 확인해 본다. 출력된 결과 중 prediction 필드는 군집 번호로서 
+    0번~199번까지 총 200개의 군집을 나타내며, car_number 필드는 각 군집번호에 포함된 차량번호를 나타낸다.
+    val transKmeansModel = kmeansModel.transform(dsSmartCar_Master_12)
+    transKmeansModel.groupBy("prediction").agg(collect_set("car_number").as("car_number")).orderBy("prediction").show(200, false)
+
+  - 군집 모델의 정확도를 평가하기 위해 평균 실루엣(Silhouette) 스코어를 확인해 본다. 실루엣 스코어는 -1~1의 값을 가지며 각각 다음과 같은 의미를 가진다.
+    <평균 실루엣 스코어>
+    1에 가까운 값: 잘못된 군집에 포함된 개체가 많음
+    0에 가까운 값: 군집에 포함되지 않은 개체가 많음
+    1에 가까운 값: 군집에 포함된 개체가 많음
+    val evaluator = new ClusteringEvaluator()
+    val silhouette = evaluator.evaluate(transKmeansModel)
+
+    println(s"Silhouette Score = $silhouette")
+    => 1에 가까운 값일수록 좋은 군집 모형일 가능성이 높다.
+
+  - 군집된 결과를 데이터 탐색 과정을 통해 좀 더 분석해 보자. 앞서 군집 결과인 그림 7.103을 보면 1번 군집에 15개의 차량 번호가 군집됐다. 
+    15개의 차량 번호를 임팔라의 쿼리로 조회해서 어떤 특징이 있는지 확인해 본다. 휴를 실행해 상단의 쿼리콤보에서 
+    [편집기] → [Impala]를 선택한 후 임팔라 편집기에서 다음 쿼리를 실행한다.
+    SELECT * FROM smartcar_master
+    WHERE car_number in (
+        'H0008', 'R0078', 'E0033', 'B0008', 'M0028', 'M0003', 'D0061', 'T0026',
+        'X0055', 'L0069', 'I0001', 'J0015', 'P0098', 'R0002', 'N0085'
+    )
+    <특징>
+    ■ 고객 성향 1번 군집은 50~60대의 기혼 남성들로, 스마트카 F모델 차량을 선호한다.
+    ■ 소득 추정: 1번 군집에 속한 고객군의 차량은 1500 CC 이하의 차량으로, 소득 수준이 낮을 것으로 추정된다.
+    ■ 분석 결과: 스마트카를 신규 구입하거나 재구매할 가능성이 있는 50~60대 기혼 남성 고객을 대상으로 저가형 스마트카 F모델을 타깃 마케팅한다.
+
+
+ # 실습 (스쿱의 내보내기 기능 - 이상 운전 차량 정보)
+  사용할 DBMS 정보 및 환경설정
+   • RDBMS OS: PostgreSQL
+   • 설치 IP: 192,168.56.101
+   • 설치 포트: 7432
+   • 데이터베이스: postgresql
+   • 접속 계정: cloudera-scm
+   • 접속 패스워드: vsqBur5ygT
+     (패스워드의 경우 Server0l에 접속해 다음 명령으로 확인 $ cat /var/lib/cloudera-scm-server-db/data/generated_password.txt)
+
+  1. PostgreSQL에 콘솔로 접속해서 기본적인 데이터베이스 작업을 진행. Server01의 SSH를 통해 접속한 후 다음 명령으로 
+     PostgreSQL 데이터베이스에 연결한다.
+     $ psql -U cloudera-scm -p 7432 -h localhost -d postgres
+
+  2. HDFS에 “이상 운전 패턴" 데이터를 PostgreSQL의 테이블로 저장하기 위한 RDBMS 테이블을 생성
+     테이블명은 smartcar_symptom_info
+    postgres=# create table smartcar_symptom_info (
+    	car_number varchar,
+    	speed_p_avg varchar,
+    	speed_p_symptom varchar,
+    	break_p_avg varchar,
+    	break_p_symptom varchar,
+    	steer_a_cnt varchar,
+    	steer_p_symptom varchar,
+    	biz_date varchar
+    );
+     정상적으로 생성됐는지 확인
+    postgres=# select * from smartcar_symptom_info;
+
+  3. 새로운 SSH 창을 하나 더 열어 Server01에 접속한다. 먼저 스쿱 명령을 실행하기 위해서는 PostgreSQL JDBC 드라이버를 스쿱의 라이브러리 경로에 복사
+    $ cp /opt/cloudera/parcels/CDH/jars/postgresql-*, jar /opt/cloudera/parcels/CDH/lib/sqoop/lib
+     스쿱 내보내기 명령을 실행한다. 패스워드 옵션은 파일럿 환경에서 생성된 값으로 입력
+    $ sqoop export --connect jdbc:postgresql://192.168.56.101:7432/postgres --username cloudera-scm --password vsqBur5ygT --table smartcar_symptom_info 
+      --export-dir /user/hive/warehouse/managed_smartcar_symptom_info
+      <주요 옵션>
+      username: PostgreSQL 7/18
+'     password: PostgreSQL 패스워드
+      table: PostgreSQL 데이터베이스 테이블명
+      export-dir: 내보내기 할 HDFS 데이터 경로
+     하이브의 Managed_SmartCar_Symptom_Info 테이블의 데이터 전체가 PostgreSQL의 smartcar_symptom_info 테이블에 
+     내보내기됐을 것이다. PostgreSQL 콘솔로 접속해 다음의 SELECT 쿼리를 실행해 보면 결과를 확인할 수 있다.
+    postgres=# select * from smartcar_symptom_info;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
